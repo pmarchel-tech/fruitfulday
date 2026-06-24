@@ -2358,7 +2358,20 @@ const App: React.FC = () => {
       <div className="flex h-[100dvh] w-full bg-beige items-center justify-center p-6">
         <div className="w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden border border-stone-200">
            <div className="bg-accent p-8 text-center">
-              <div className="w-16 h-16 bg-secondary text-accent rounded-2xl flex items-center justify-center text-2xl font-bold mx-auto mb-4 shadow-lg">DP</div>
+              <svg className="w-16 h-16 mx-auto mb-4 drop-shadow-md" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect width="100" height="100" rx="24" fill="#1c1917" />
+                <path d="M50 72V48" stroke="#a8a29e" strokeWidth="6" strokeLinecap="round" />
+                <path d="M50 58C45 54 40 54 38 50" stroke="#a8a29e" strokeWidth="4" strokeLinecap="round" />
+                <path d="M50 54C55 50 60 50 62 46" stroke="#a8a29e" strokeWidth="4" strokeLinecap="round" />
+                <circle cx="50" cy="36" r="16" fill="#86efac" fillOpacity="0.9" />
+                <circle cx="41" cy="43" r="12" fill="#4ade80" fillOpacity="0.9" />
+                <circle cx="59" cy="43" r="12" fill="#22c55e" fillOpacity="0.85" />
+                <circle cx="44" cy="32" r="3" fill="#ef4444" />
+                <circle cx="56" cy="36" r="3" fill="#f97316" />
+                <circle cx="37" cy="42" r="3" fill="#ef4444" />
+                <circle cx="63" cy="43" r="3" fill="#f97316" />
+                <circle cx="49" cy="44" r="3" fill="#ef4444" />
+              </svg>
               <h1 className="text-2xl font-bold text-secondary">DailyPulse</h1>
               <p className="text-secondary/80 font-medium uppercase tracking-tight">Daily Update Status</p>
            </div>

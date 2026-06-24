@@ -303,12 +303,24 @@ export const getTasks = async (user?: User): Promise<Task[]> => {
       queryBuilder = queryBuilder.eq('user_id', user.id);
     }
 
-    const { data, error } = await queryBuilder;
-    if (error) throw error;
+    let { data, error } = await queryBuilder;
+
+    // FALLBACK: If the complex join query fails (e.g. due to schema or relation issues),
+    // fetch tasks without the join so the app still loads the tasks successfully.
+    if (error) {
+      console.warn('Failed to fetch tasks with tags join, attempting fallback query without join:', error.message);
+      let fallbackQuery = supabase.from('tasks').select('*');
+      if (user && user.role !== 'ADMIN') {
+        fallbackQuery = fallbackQuery.eq('user_id', user.id);
+      }
+      const { data: fallbackData, error: fallbackError } = await fallbackQuery;
+      if (fallbackError) throw fallbackError;
+      data = fallbackData;
+    }
 
     return (data || []).map(t => {
       const tags = t.task_tags
-        ? (t.task_tags as any[]).map(tt => tt.tags?.name).filter(Boolean)
+        ? (t.task_tags as any[]).map((tt: any) => tt.tags?.name).filter(Boolean)
         : [];
 
       return {
