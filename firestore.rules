@@ -1,0 +1,130 @@
+
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: users
+// Document ID: {userId}
+// Fields:
+//   - id: string (required)
+//   - username: string (required)
+//   - pin: string (required)
+//   - role: string (required, 'ADMIN' or 'MEMBER')
+//   - teamMemberIds: list of strings (optional)
+//
+// Collection: tasks
+// Document ID: {taskId}
+// Fields:
+//   - id: string (required)
+//   - userId: string (required) - Owner
+//   - title: string (required)
+//   - category: string (required)
+//   - status: string (required)
+//   - targetDate: string (required)
+//   - createdAt: number (required)
+//
+// Collection: task_updates
+// Document ID: {updateId}
+// Fields:
+//   - id: string (required)
+//   - taskId: string (required)
+//   - date: string (required)
+//   - content: string (required)
+//   - timestamp: number (required)
+//   - isArchived: bool (required)
+//   - statusChange: map (optional)
+//
+// ===============================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.email == "pmarchel@gmail.com" ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'ADMIN')
+      );
+    }
+
+    function isTeamMember(memberId) {
+      return isAuthenticated() && (
+        request.auth.uid == memberId || (
+          exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          ('teamMemberIds' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data) && 
+          memberId in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.teamMemberIds
+        )
+      );
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['id', 'username', 'pin', 'role']) &&
+             data.id is string && data.id.size() > 0 &&
+             data.username is string && data.username.size() > 0 &&
+             data.pin is string &&
+             data.role in ['ADMIN', 'MEMBER'];
+    }
+
+    function isValidTask(data) {
+      return data.keys().hasAll(['id', 'userId', 'title', 'category', 'status', 'targetDate', 'createdAt']) &&
+             data.id is string && data.userId is string &&
+             data.title is string && data.title.size() > 0 &&
+             data.category is string &&
+             data.status is string &&
+             data.targetDate is string;
+    }
+
+    function isValidUpdate(data) {
+      return data.keys().hasAll(['id', 'taskId', 'date', 'content', 'timestamp', 'isArchived']) &&
+             data.id is string && data.taskId is string &&
+             data.date is string &&
+             data.content is string;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /tasks/{taskId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /task_updates/{updateId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /tags/{tagId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /ai_token_records/{recordId} {
+      allow get, list, create, update, delete: if isAuthenticated();
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,86 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and team management",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "username": { "type": "string" },
+        "pin": { "type": "string" },
+        "role": { "type": "string", "enum": ["ADMIN", "MEMBER"] },
+        "teamMemberIds": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["id", "username", "pin", "role"]
+    },
+    "Task": {
+      "title": "Task",
+      "description": "A task assigned to a user",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "category": { "type": "string" },
+        "status": { "type": "string" },
+        "targetDate": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "userId", "title", "category", "status", "targetDate", "createdAt"]
+    },
+    "TaskUpdate": {
+      "title": "TaskUpdate",
+      "description": "Daily update or status change for a task",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "taskId": { "type": "string" },
+        "date": { "type": "string" },
+        "content": { "type": "string" },
+        "timestamp": { "type": "number" },
+        "isArchived": { "type": "boolean" },
+        "statusChange": {
+          "type": "object",
+          "properties": {
+            "from": { "type": "string" },
+            "to": { "type": "string" }
+          }
+        }
+      },
+      "required": ["id", "taskId", "date", "content", "timestamp", "isArchived"]
+    },
+    "AiTokenRecord": {
+      "title": "AiTokenRecord",
+      "description": "Logs details of AI token usage for queries",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "date": { "type": "string" },
+        "timestamp": { "type": "number" },
+        "usedFor": { "type": "string" },
+        "inputTokens": { "type": "number" },
+        "outputTokens": { "type": "number" }
+      },
+      "required": ["id", "userId", "date", "timestamp", "usedFor", "inputTokens", "outputTokens"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/tasks/{taskId}": {
+      "schema": "Task",
+      "description": "Tasks collection"
+    },
+    "/task_updates/{updateId}": {
+      "schema": "TaskUpdate",
+      "description": "Task updates collection"
+    },
+    "/ai_token_records/{recordId}": {
+      "schema": "AiTokenRecord",
+      "description": "AI token tracking logs"
+    }
+  }
+}
