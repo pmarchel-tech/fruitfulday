@@ -53,6 +53,7 @@ const SwipeableTaskCard: React.FC<SwipeableTaskCardProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const startX = useRef(0);
   const startY = useRef(0);
+  const hasMoved = useRef(false);
 
   const isCompleted = task.status === TaskStatus.DONE;
   const daysRemaining = getDaysRemaining(task.targetDate);
@@ -61,6 +62,7 @@ const SwipeableTaskCard: React.FC<SwipeableTaskCardProps> = ({
 
   const handleStart = (clientX: number, clientY: number) => {
     setIsDragging(true);
+    hasMoved.current = false;
     startX.current = clientX;
     startY.current = clientY;
   };
@@ -69,6 +71,11 @@ const SwipeableTaskCard: React.FC<SwipeableTaskCardProps> = ({
     if (!isDragging) return;
     const diffX = clientX - startX.current;
     const diffY = clientY - startY.current;
+
+    // If there is any movement larger than 6px in any direction, mark as moved
+    if (Math.abs(diffX) > 6 || Math.abs(diffY) > 6) {
+      hasMoved.current = true;
+    }
 
     // Scroll guard: if vertical movement is greater than horizontal, cancel dragging
     // to let the browser scroll naturally.
@@ -94,8 +101,8 @@ const SwipeableTaskCard: React.FC<SwipeableTaskCardProps> = ({
     if (dragDistance > 90) {
       // Swiped far enough to the right: trigger toggle status
       onToggleStatus(task);
-    } else if (dragDistance < 6) {
-      // Tap or click: select the task
+    } else if (!hasMoved.current) {
+      // Tap or click: only select the task if the finger didn't move/scroll
       onSelect();
     }
     setOffsetX(0);
