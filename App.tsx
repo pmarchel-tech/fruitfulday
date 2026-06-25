@@ -2436,80 +2436,8 @@ const App: React.FC = () => {
                      </div>
                    </div>
                  )}
-                 {firebaseNetworkError && (
-                    <div className="mb-4 bg-rose-50 border border-rose-200 p-4 rounded-xl">
-                      <div className="flex items-center gap-2 text-rose-700 font-bold text-sm mb-1">
-                        <AlertTriangle size={16} />
-                        Firebase Connection Issue
-                      </div>
-                      <p className="text-xs text-rose-600 leading-relaxed mb-2">
-                        Could not establish a connection with Google auth server. You can still try accessing with your account, or retry the connection below.
-                      </p>
-                      <button
-                        type="button"
-                        onClick={handleRetryAuth}
-                        className="text-xs font-bold text-rose-700 underline hover:text-rose-900 cursor-pointer flex items-center gap-1"
-                        disabled={authLoading}
-                      >
-                        {authLoading ? 'Connecting...' : '🔄 Retry Connection'}
-                      </button>
-                    </div>
-                  )}
-                 {isAnonDisabled && (
-                    <div className="mb-4 bg-amber-50 border border-amber-200 p-4 rounded-xl">
-                      <div className="flex items-center gap-2 text-amber-700 font-bold text-sm mb-1">
-                        <AlertCircle size={16} />
-                        Anonymous Auth Disabled
-                      </div>
-                      <p className="text-xs text-amber-600 leading-relaxed">
-                        Username/PIN login requires Anonymous Auth. Please enable it in the 
-                        <a href="https://console.firebase.google.com/" target="_blank" rel="noopener noreferrer" className="underline ml-1">
-                          Firebase Console
-                        </a> (Authentication &gt; Sign-in method).
-                      </p>
-                    </div>
-                  )}
                  {authError && <div className="bg-red-50 text-red-600 text-xs font-bold p-3 rounded-xl flex items-center gap-2"><AlertCircle size={14} /> {authError}</div>}
-                 <button type="submit" className="mt-4 bg-secondary text-accent py-3 rounded-xl font-bold hover:bg-stone-800 transition-transform active:scale-95 shadow-lg shadow-stone-200 flex justify-center items-center gap-2 w-full disabled:opacity-50" disabled={authLoading || isAnonDisabled}>{authLoading ? <Loader2 size={18} className="animate-spin"/> : (authMode === 'LOGIN' ? 'Access Dashboard' : 'Create Account')}</button>
-
-                  <div className="relative my-4">
-                    <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-stone-200"></div></div>
-                    <div className="relative flex justify-center text-xs uppercase"><span className="bg-white px-2 text-stone-400 font-bold">Or continue with</span></div>
-                  </div>
-
-                  <button 
-                    type="button"
-                    onClick={handleGoogleLogin}
-                    disabled={authLoading}
-                    className="w-full py-3 bg-white border border-stone-200 text-secondary rounded-xl font-bold flex items-center justify-center gap-3 hover:bg-stone-50 transition-all active:scale-95 disabled:opacity-50"
-                  >
-                    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" referrerPolicy="no-referrer" />
-                    Google Account
-                  </button>
-
-                  {auth.currentUser && (
-                    <div className="mt-6 pt-6 border-t border-stone-100 text-center">
-                      <p className="text-[10px] text-stone-400 mb-2">Logged in as: {auth.currentUser.email || 'Anonymous'}</p>
-                      
-                      {!currentUser && (
-                        <button 
-                          type="button"
-                          onClick={handleGoogleLogin}
-                          className="w-full py-2 mb-4 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg text-xs font-bold hover:bg-amber-100 transition-all"
-                        >
-                          Profile not found. Click to Sync Profile
-                        </button>
-                      )}
-
-                      <button 
-                        type="button"
-                        onClick={() => auth.signOut()}
-                        className="text-[10px] text-red-400 hover:text-red-600 font-bold underline uppercase tracking-wider"
-                      >
-                        Sign out of this session
-                      </button>
-                    </div>
-                  )}
+                 <button type="submit" className="mt-4 bg-secondary text-accent py-3 rounded-xl font-bold hover:bg-stone-800 transition-transform active:scale-95 shadow-lg shadow-stone-200 flex justify-center items-center gap-2 w-full disabled:opacity-50" disabled={authLoading}>{authLoading ? <Loader2 size={18} className="animate-spin"/> : (authMode === 'LOGIN' ? 'Access Dashboard' : 'Create Account')}</button>
               </form>
            </div>
            <div className="px-8 pb-8 text-center opacity-30 hover:opacity-100 transition-opacity">
