@@ -28,6 +28,7 @@ import {
   backfillTaskUpdates
 } from './services/supabaseService';
 import SwipeableCard from './components/SwipeableCard';
+import SwipeableTaskCard from './components/SwipeableTaskCard';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { auth, loginWithGoogle, loginAnonymously, getCachedAccessToken } from './firebase';
 import { createExportSpreadsheet, populateSpreadsheetData, importSpreadsheetData, parseCSV } from './services/googleSheetsService';
@@ -2307,8 +2308,8 @@ const App: React.FC = () => {
       alert("Failed to save task changes: " + (err.message || err));
     }
   };
-  const handleToggleTaskStatus = async (task: Task, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleToggleTaskStatus = async (task: Task, e?: React.MouseEvent | React.TouchEvent) => {
+    if (e) e.stopPropagation();
     const newStatus = task.status === TaskStatus.DONE ? TaskStatus.PROGRESS : TaskStatus.DONE;
     const updatedTask: Task = {
       id: task.id,
@@ -3103,88 +3104,18 @@ const App: React.FC = () => {
                   <p className="text-xs text-slate-450 mt-1">Try resetting search query or filters.</p>
                 </div>
               ) : (
-                tasksToShow.map(task => {
-                  const isCompleted = task.status === TaskStatus.DONE;
-                  const daysRemaining = getDaysRemaining(task.targetDate);
-                  const isOverdue = daysRemaining < 0 && !isCompleted;
-                  const taskActionsCount = updates.filter(u => u.taskId === task.id).length;
-                  
-                  return (
-                    <div 
-                      key={task.id} 
-                      onClick={() => handleTaskSelect(task.id)}
-                      className={`bg-white p-5 rounded-[24px] flex items-center justify-between border-2 transition-all cursor-pointer ${
-                        selectedTaskId === task.id 
-                          ? 'border-[#0038FF] ring-4 ring-[#0038FF]/5 shadow-md shadow-blue-500/5' 
-                          : 'border-slate-100/80 hover:border-slate-200 hover:shadow-sm'
-                      }`}
-                    >
-                      {/* Left details */}
-                      <div className="flex-1 min-w-0 pr-4">
-                        <h3 className={`font-bold text-base leading-tight truncate transition-all duration-300 ${
-                          isCompleted ? 'text-[#8E9BB2] line-through font-semibold' : 'text-[#1C2038]'
-                        }`}>
-                          {task.title}
-                        </h3>
-                        
-                        <div className="flex flex-wrap items-center gap-1.5 mt-2">
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-lg text-[8.5px] font-bold bg-[#E6ECFF] text-[#0038FF] uppercase tracking-wider">
-                            {task.category}
-                          </span>
-                          
-                          {isOverdue ? (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-lg text-[8.5px] font-bold bg-[#FFEBEC] text-[#D83F52] uppercase tracking-wider">
-                              Overdue
-                            </span>
-                          ) : isCompleted ? (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-lg text-[8.5px] font-bold bg-[#E6F4EA] text-[#137333] uppercase tracking-wider">
-                              Done
-                            </span>
-                          ) : (
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded-lg text-[8.5px] font-bold bg-slate-100 text-[#5F6368] uppercase tracking-wider`}>
-                              In Progress
-                            </span>
-                          )}
-
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-lg text-[8.5px] font-bold bg-slate-100 text-slate-600 uppercase tracking-wider" title="Due Date">
-                            {formatDDMMM(task.targetDate)}
-                          </span>
-
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-lg text-[8.5px] font-bold bg-purple-50 text-purple-700 border border-purple-100/60 uppercase tracking-wider" title="Actions Count">
-                            {taskActionsCount}
-                          </span>
-
-                          {task.tags?.map(t => (
-                            <span key={t} className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[8.5px] font-extrabold bg-blue-50/70 text-[#0038FF] border border-blue-100/30 uppercase tracking-tight">
-                              #{t}
-                            </span>
-                          ))}
-
-                          {/* Show owner small badge for admin */}
-                          {currentUser.role === 'ADMIN' && task.userId !== currentUser.id && userMap[task.userId] && (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-lg text-[8.5px] font-bold bg-amber-50 text-amber-700 border border-amber-100" title="Task Owner">
-                              {userMap[task.userId].username}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      
-                      {/* Right toggle completion checkmark */}
-                      <button 
-                        type="button"
-                        onClick={(e) => handleToggleTaskStatus(task, e)}
-                        className={`p-1.5 flex items-center justify-center shrink-0 transition-all active:scale-[0.98] hover:scale-105 ${
-                          isCompleted 
-                            ? 'text-[#0038FF]' 
-                            : 'text-slate-300 hover:text-[#0038FF]'
-                        }`}
-                        title={isCompleted ? 'Mark Incomplete' : 'Mark Complete'}
-                      >
-                        <Check size={18} className="stroke-[3.5]" />
-                      </button>
-                    </div>
-                  );
-                })
+                tasksToShow.map(task => (
+                  <SwipeableTaskCard
+                    key={task.id}
+                    task={task}
+                    isSelected={selectedTaskId === task.id}
+                    onSelect={() => handleTaskSelect(task.id)}
+                    onToggleStatus={(t) => handleToggleTaskStatus(t)}
+                    currentUser={currentUser}
+                    userMap={userMap}
+                    updates={updates}
+                  />
+                ))
               )}
             </div>
             {/* END: Task Cards List */}
