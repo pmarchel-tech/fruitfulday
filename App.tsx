@@ -758,6 +758,7 @@ const App: React.FC = () => {
   } | null>(null);
   const tasksFileInputRef = useRef<HTMLInputElement>(null);
   const updatesFileInputRef = useRef<HTMLInputElement>(null);
+  const saveTimeoutRef = useRef<any>(null);
 
   const handleImportClick = async () => {
     setImportError(null);
@@ -1408,13 +1409,69 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!currentUser) return;
 
-    const unsubTasks = subscribeToTasks(setTasks, currentUser);
-    const unsubUpdates = subscribeToUpdates(setUpdates, currentUser);
-    const unsubUsers = subscribeToUsers(setAllUsers);
-    const unsubTags = subscribeToTags(setTagMaster);
-    const unsubAiTokens = subscribeToAiTokenRecords(setAiTokenRecords, currentUser.role === 'ADMIN' ? undefined : currentUser.id);
+    let isMounted = true;
+    setIsLoadingData(true);
+
+    const loadAllInitialData = async () => {
+      try {
+        const userId = currentUser.id;
+        const isAdmin = currentUser.role === 'ADMIN';
+
+        const [
+          fetchedTasks,
+          fetchedUpdates,
+          fetchedUsers,
+          { data: fetchedTags },
+          fetchedAiTokensData
+        ] = await Promise.all([
+          getTasks(currentUser),
+          getUpdates(),
+          getUsers(),
+          supabase.from('tags').select('*'),
+          (async () => {
+            let q = supabase.from('ai_token_records').select('*');
+            if (!isAdmin) {
+              q = q.eq('user_id', userId);
+            }
+            const { data } = await q.order('timestamp_ms', { ascending: false });
+            return (data || []).map(r => ({
+              id: r.id,
+              userId: r.user_id,
+              date: r.date,
+              timestamp: r.timestamp_ms ? Number(r.timestamp_ms) : new Date(r.timestamp).getTime(),
+              usedFor: r.used_for,
+              inputTokens: r.input_tokens,
+              outputTokens: r.output_tokens
+            }));
+          })()
+        ]);
+
+        if (isMounted) {
+          setTasks(fetchedTasks);
+          setUpdates(fetchedUpdates);
+          setAllUsers(fetchedUsers);
+          setTagMaster(fetchedTags || []);
+          setAiTokenRecords(fetchedAiTokensData);
+          setIsLoadingData(false);
+        }
+      } catch (error) {
+        console.error("Error loading initial database data:", error);
+        if (isMounted) {
+          setIsLoadingData(false);
+        }
+      }
+    };
+
+    loadAllInitialData();
+
+    const unsubTasks = subscribeToTasks(setTasks, currentUser, true);
+    const unsubUpdates = subscribeToUpdates(setUpdates, currentUser, true);
+    const unsubUsers = subscribeToUsers(setAllUsers, true);
+    const unsubTags = subscribeToTags(setTagMaster, true);
+    const unsubAiTokens = subscribeToAiTokenRecords(setAiTokenRecords, currentUser.role === 'ADMIN' ? undefined : currentUser.id, true);
 
     return () => {
+      isMounted = false;
       unsubTasks();
       unsubUpdates();
       unsubUsers();
@@ -1542,26 +1599,6 @@ const App: React.FC = () => {
     }
   }, [selectedTaskId, activeTab]);
 
-  const loadData = async (userOverride?: User) => {
-    // Data is now handled by real-time subscriptions
-    setIsLoadingData(true);
-    const userToUse = userOverride || currentUser;
-    try {
-      const [fetchedTasks, fetchedUpdates, fetchedUsers] = await Promise.all([
-          getTasks(userToUse || undefined),
-          getUpdates(),
-          getUsers()
-      ]);
-      setTasks(fetchedTasks);
-      setUpdates(fetchedUpdates);
-      setAllUsers(fetchedUsers);
-    } catch (error) {
-      console.error("Error loading data:", error);
-    } finally {
-      setIsLoadingData(false);
-    }
-  };
-
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthLoading(true);
@@ -1570,7 +1607,6 @@ const App: React.FC = () => {
       const user = await loginUser(authEmail, authPassword);
       if (user) {
         setCurrentUser(user);
-        await loadData(user);
         setAuthEmail('');
         setAuthPassword('');
       } else {
@@ -1596,7 +1632,6 @@ const App: React.FC = () => {
       const user = await registerUser(authUsername, authEmail, authPassword, authRole);
       if (user) {
         setCurrentUser(user);
-        await loadData(user);
         setAuthUsername('');
         setAuthEmail('');
         setAuthPassword('');
@@ -2301,12 +2336,19 @@ const App: React.FC = () => {
       [field]: value
     };
     setTasks(prev => prev.map(t => t.id === selectedTask.id ? updatedTask : t));
-    try {
-      await saveSingleTask(updatedTask);
-    } catch (err: any) {
-      console.error("Failed to save task update:", err);
-      alert("Failed to save task changes: " + (err.message || err));
+
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
     }
+
+    saveTimeoutRef.current = setTimeout(async () => {
+      try {
+        await saveSingleTask(updatedTask);
+      } catch (err: any) {
+        console.error("Failed to save task update:", err);
+        alert("Failed to save task changes: " + (err.message || err));
+      }
+    }, 500);
   };
   const handleToggleTaskStatus = async (task: Task, e?: React.MouseEvent | React.TouchEvent) => {
     if (e) e.stopPropagation();

@@ -87,21 +87,34 @@ ALTER TABLE public.task_tags ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.task_updates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ai_token_records ENABLE ROW LEVEL SECURITY;
 
--- Helper Function: Check if the current user is an Admin
+-- Helper Function: Check if the current user is an Admin (Optimized STABLE with JWT role lookup)
 CREATE OR REPLACE FUNCTION public.is_admin()
-RETURNS BOOLEAN SECURITY DEFINER AS $$
+RETURNS BOOLEAN SECURITY DEFINER STABLE AS $$
 BEGIN
+    -- Check JWT metadata first for maximum speed (zero database queries)
+    IF coalesce(auth.jwt() -> 'user_metadata' ->> 'role', '') = 'ADMIN' THEN
+        RETURN TRUE;
+    END IF;
+    IF auth.jwt()->>'email' = 'pmarchel@gmail.com' THEN
+        RETURN TRUE;
+    END IF;
+    -- Fallback to database check
     RETURN EXISTS (
         SELECT 1 FROM public.profiles
         WHERE id = auth.uid()::text AND role = 'ADMIN'
-    ) OR auth.jwt()->>'email' = 'pmarchel@gmail.com';
+    );
 END;
 $$ LANGUAGE plpgsql;
 
--- Helper Function: Check if a member is in an admin's team
+-- Helper Function: Check if a member is in an admin's team (Optimized STABLE with short-circuit check)
 CREATE OR REPLACE FUNCTION public.is_team_member(member_id TEXT)
-RETURNS BOOLEAN SECURITY DEFINER AS $$
+RETURNS BOOLEAN SECURITY DEFINER STABLE AS $$
 BEGIN
+    -- If the current user is not an admin, they cannot have team members (skip database scan)
+    IF coalesce(auth.jwt() -> 'user_metadata' ->> 'role', '') != 'ADMIN' THEN
+        RETURN auth.uid()::text = member_id;
+    END IF;
+
     RETURN auth.uid()::text = member_id OR EXISTS (
         SELECT 1 FROM public.team_members
         WHERE admin_id = auth.uid()::text AND member_id = is_team_member.member_id
@@ -247,3 +260,15 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 CREATE OR REPLACE TRIGGER on_auth_user_created
     AFTER INSERT ON auth.users
     FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- ==========================================
+-- PERFORMANCE INDEXES (Optimizes queries and RLS policy scans)
+-- ==========================================
+CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON public.tasks(user_id);
+CREATE INDEX IF NOT EXISTS idx_task_updates_task_id ON public.task_updates(task_id);
+CREATE INDEX IF NOT EXISTS idx_task_updates_user_id ON public.task_updates(user_id);
+CREATE INDEX IF NOT EXISTS idx_task_tags_tag_id ON public.task_tags(tag_id);
+CREATE INDEX IF NOT EXISTS idx_ai_token_records_user_id ON public.ai_token_records(user_id);
+CREATE INDEX IF NOT EXISTS idx_team_members_member_id ON public.team_members(member_id);
+CREATE INDEX IF NOT EXISTS idx_task_updates_timestamp_ms ON public.task_updates(timestamp_ms DESC NULLS LAST);
+CREATE INDEX IF NOT EXISTS idx_ai_token_records_timestamp_ms ON public.ai_token_records(timestamp_ms DESC NULLS LAST);

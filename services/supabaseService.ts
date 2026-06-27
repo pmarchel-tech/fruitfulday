@@ -369,45 +369,64 @@ export const saveSingleTask = async (task: Task) => {
     if (taskErr) throw taskErr;
 
     // Handle tags (relational normalization)
-    if (task.tags && task.tags.length > 0) {
-      // 1. Ensure tags exist in public.tags
-      for (const tagName of task.tags) {
-        await supabase
+    const { data: existingJunctions } = await supabase
+      .from('task_tags')
+      .select('tag_id, tags(name)')
+      .eq('task_id', task.id);
+
+    const existingTagNames = existingJunctions
+      ? (existingJunctions as any[]).map(j => j.tags?.name).filter(Boolean)
+      : [];
+
+    const newTagNames = task.tags || [];
+
+    // Compare tag arrays to detect changes
+    const hasTagsChanged = 
+      existingTagNames.length !== newTagNames.length ||
+      !existingTagNames.every(t => newTagNames.includes(t)) ||
+      !newTagNames.every(t => existingTagNames.includes(t));
+
+    if (hasTagsChanged) {
+      if (newTagNames.length > 0) {
+        // 1. Ensure tags exist in public.tags
+        for (const tagName of newTagNames) {
+          await supabase
+            .from('tags')
+            .upsert({ name: tagName }, { onConflict: 'name' });
+        }
+
+        // 2. Fetch tag records to get their IDs
+        const { data: tagRecords } = await supabase
           .from('tags')
-          .upsert({ name: tagName }, { onConflict: 'name' });
-      }
+          .select('id, name')
+          .in('name', newTagNames);
 
-      // 2. Fetch tag records to get their IDs
-      const { data: tagRecords } = await supabase
-        .from('tags')
-        .select('id, name')
-        .in('name', task.tags);
+        if (tagRecords) {
+          // 3. Clear existing relations
+          await supabase
+            .from('task_tags')
+            .delete()
+            .eq('task_id', task.id);
 
-      if (tagRecords) {
-        // 3. Clear existing relations
+          // 4. Insert new relations
+          const junctionRecords = tagRecords.map(tr => ({
+            task_id: task.id,
+            tag_id: tr.id
+          }));
+
+          const { error: junctionErr } = await supabase
+            .from('task_tags')
+            .insert(junctionRecords);
+
+          if (junctionErr) throw junctionErr;
+        }
+      } else {
+        // Clear relations if no tags are provided
         await supabase
           .from('task_tags')
           .delete()
           .eq('task_id', task.id);
-
-        // 4. Insert new relations
-        const junctionRecords = tagRecords.map(tr => ({
-          task_id: task.id,
-          tag_id: tr.id
-        }));
-
-        const { error: junctionErr } = await supabase
-          .from('task_tags')
-          .insert(junctionRecords);
-
-        if (junctionErr) throw junctionErr;
       }
-    } else {
-      // Clear relations if no tags are provided
-      await supabase
-        .from('task_tags')
-        .delete()
-        .eq('task_id', task.id);
     }
   } catch (error) {
     console.error('Error saving single task in Supabase:', error);
@@ -506,7 +525,7 @@ export const deleteUpdate = async (id: string) => {
 
 // --- REAL-TIME SUBSCRIPTIONS ---
 
-export const subscribeToTasks = (callback: (tasks: Task[]) => void, user?: User) => {
+export const subscribeToTasks = (callback: (tasks: Task[]) => void, user?: User, skipInitialLoad = false) => {
   const channel = supabase
     .channel('realtime:tasks')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, async () => {
@@ -516,14 +535,16 @@ export const subscribeToTasks = (callback: (tasks: Task[]) => void, user?: User)
     .subscribe();
 
   // Load initial data
-  getTasks(user).then(callback);
+  if (!skipInitialLoad) {
+    getTasks(user).then(callback);
+  }
 
   return () => {
     supabase.removeChannel(channel);
   };
 };
 
-export const subscribeToUpdates = (callback: (updates: TaskUpdate[]) => void, user?: User) => {
+export const subscribeToUpdates = (callback: (updates: TaskUpdate[]) => void, user?: User, skipInitialLoad = false) => {
   const channel = supabase
     .channel('realtime:task_updates')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'task_updates' }, async () => {
@@ -534,14 +555,16 @@ export const subscribeToUpdates = (callback: (updates: TaskUpdate[]) => void, us
     .subscribe();
 
   // Load initial data
-  getUpdates().then(callback);
+  if (!skipInitialLoad) {
+    getUpdates().then(callback);
+  }
 
   return () => {
     supabase.removeChannel(channel);
   };
 };
 
-export const subscribeToUsers = (callback: (users: User[]) => void) => {
+export const subscribeToUsers = (callback: (users: User[]) => void, skipInitialLoad = false) => {
   const channel = supabase
     .channel('realtime:profiles')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, async () => {
@@ -551,7 +574,9 @@ export const subscribeToUsers = (callback: (users: User[]) => void) => {
     .subscribe();
 
   // Load initial data
-  getUsers().then(callback);
+  if (!skipInitialLoad) {
+    getUsers().then(callback);
+  }
 
   return () => {
     supabase.removeChannel(channel);
@@ -570,7 +595,7 @@ export const saveSingleTag = async (tag: Tag) => {
   }
 };
 
-export const subscribeToTags = (callback: (tags: Tag[]) => void) => {
+export const subscribeToTags = (callback: (tags: Tag[]) => void, skipInitialLoad = false) => {
   const channel = supabase
     .channel('realtime:tags')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'tags' }, async () => {
@@ -580,9 +605,11 @@ export const subscribeToTags = (callback: (tags: Tag[]) => void) => {
     .subscribe();
 
   // Load initial data
-  supabase.from('tags').select('*').then(({ data }) => {
-    callback(data || []);
-  });
+  if (!skipInitialLoad) {
+    supabase.from('tags').select('*').then(({ data }) => {
+      callback(data || []);
+    });
+  }
 
   return () => {
     supabase.removeChannel(channel);
@@ -611,7 +638,7 @@ export const saveAiTokenRecord = async (record: AiTokenRecord) => {
   }
 };
 
-export const subscribeToAiTokenRecords = (callback: (records: AiTokenRecord[]) => void, userId?: string) => {
+export const subscribeToAiTokenRecords = (callback: (records: AiTokenRecord[]) => void, userId?: string, skipInitialLoad = false) => {
   const channel = supabase
     .channel('realtime:ai_token_records')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'ai_token_records' }, async () => {
@@ -635,22 +662,24 @@ export const subscribeToAiTokenRecords = (callback: (records: AiTokenRecord[]) =
     .subscribe();
 
   // Load initial data
-  let q = supabase.from('ai_token_records').select('*');
-  if (userId) {
-    q = q.eq('user_id', userId);
+  if (!skipInitialLoad) {
+    let q = supabase.from('ai_token_records').select('*');
+    if (userId) {
+      q = q.eq('user_id', userId);
+    }
+    q.order('timestamp_ms', { ascending: false }).then(({ data }) => {
+      const records = (data || []).map(r => ({
+        id: r.id,
+        userId: r.user_id,
+        date: r.date,
+        timestamp: r.timestamp_ms ? Number(r.timestamp_ms) : new Date(r.timestamp).getTime(),
+        usedFor: r.used_for,
+        inputTokens: r.input_tokens,
+        outputTokens: r.output_tokens
+      }));
+      callback(records);
+    });
   }
-  q.order('timestamp_ms', { ascending: false }).then(({ data }) => {
-    const records = (data || []).map(r => ({
-      id: r.id,
-      userId: r.user_id,
-      date: r.date,
-      timestamp: r.timestamp_ms ? Number(r.timestamp_ms) : new Date(r.timestamp).getTime(),
-      usedFor: r.used_for,
-      inputTokens: r.input_tokens,
-      outputTokens: r.output_tokens
-    }));
-    callback(records);
-  });
 
   return () => {
     supabase.removeChannel(channel);
