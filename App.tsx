@@ -1417,44 +1417,55 @@ const App: React.FC = () => {
         const userId = currentUser.id;
         const isAdmin = currentUser.role === 'ADMIN';
 
-        // Wave 1: Fetch tasks, users, tags, and tokens in parallel
-        const [
-          fetchedTasks,
-          fetchedUsers,
-          { data: fetchedTags },
-          fetchedAiTokensData
-        ] = await Promise.all([
-          getTasks(currentUser),
-          getUsers(),
-          supabase.from('tags').select('*'),
+        // Wrap the fetching process in a 15-second timeout to prevent permanent loading screens
+        await Promise.race([
           (async () => {
-            let q = supabase.from('ai_token_records').select('*');
-            if (!isAdmin) {
-              q = q.eq('user_id', userId);
+            // Wave 1: Fetch tasks, users, tags, and tokens in parallel
+            const [
+              fetchedTasks,
+              fetchedUsers,
+              { data: fetchedTags },
+              fetchedAiTokensData
+            ] = await Promise.all([
+              getTasks(currentUser),
+              getUsers(),
+              supabase.from('tags').select('*'),
+              (async () => {
+                let q = supabase.from('ai_token_records').select('*');
+                if (!isAdmin) {
+                  q = q.eq('user_id', userId);
+                }
+                const { data } = await q.order('timestamp_ms', { ascending: false });
+                return (data || []).map(r => ({
+                  id: r.id,
+                  userId: r.user_id,
+                  date: r.date,
+                  timestamp: r.timestamp_ms ? Number(r.timestamp_ms) : new Date(r.timestamp).getTime(),
+                  usedFor: r.used_for,
+                  inputTokens: r.input_tokens,
+                  outputTokens: r.output_tokens
+                }));
+              })()
+            ]);
+
+            // Wave 2: Fetch updates using the loaded task IDs to avoid full table scans
+            const taskIds = fetchedTasks.map(t => t.id);
+            const fetchedUpdates = taskIds.length > 0 ? await getUpdates(taskIds) : [];
+
+            if (isMounted) {
+              setTasks(fetchedTasks);
+              setUpdates(fetchedUpdates);
+              setAllUsers(fetchedUsers);
+              setTagMaster(fetchedTags || []);
+              setAiTokenRecords(fetchedAiTokensData);
             }
-            const { data } = await q.order('timestamp_ms', { ascending: false });
-            return (data || []).map(r => ({
-              id: r.id,
-              userId: r.user_id,
-              date: r.date,
-              timestamp: r.timestamp_ms ? Number(r.timestamp_ms) : new Date(r.timestamp).getTime(),
-              usedFor: r.used_for,
-              inputTokens: r.input_tokens,
-              outputTokens: r.output_tokens
-            }));
-          })()
+          })(),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error("Database query timed out")), 15000)
+          )
         ]);
 
-        // Wave 2: Fetch updates using the loaded task IDs to avoid full table scans
-        const taskIds = fetchedTasks.map(t => t.id);
-        const fetchedUpdates = taskIds.length > 0 ? await getUpdates(taskIds) : [];
-
         if (isMounted) {
-          setTasks(fetchedTasks);
-          setUpdates(fetchedUpdates);
-          setAllUsers(fetchedUsers);
-          setTagMaster(fetchedTags || []);
-          setAiTokenRecords(fetchedAiTokensData);
           setIsLoadingData(false);
         }
       } catch (error) {

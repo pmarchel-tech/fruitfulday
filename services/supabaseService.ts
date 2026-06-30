@@ -294,46 +294,49 @@ export const addTeamMembers = async (adminId: string, memberIds: string[]): Prom
 
 export const getTasks = async (user?: User): Promise<Task[]> => {
   try {
-    // Select task and its associated tags via task_tags junction table
-    let queryBuilder = supabase
-      .from('tasks')
-      .select('*, task_tags(tag_id, tags(name))');
+    let queryBuilder = supabase.from('tasks').select('*');
 
     if (user && user.role !== 'ADMIN') {
       queryBuilder = queryBuilder.eq('user_id', user.id);
     }
 
-    let { data, error } = await queryBuilder;
+    const { data: tasksData, error: tasksErr } = await queryBuilder;
+    if (tasksErr) throw tasksErr;
 
-    // FALLBACK: If the complex join query fails (e.g. due to schema or relation issues),
-    // fetch tasks without the join so the app still loads the tasks successfully.
-    if (error) {
-      console.warn('Failed to fetch tasks with tags join, attempting fallback query without join:', error.message);
-      let fallbackQuery = supabase.from('tasks').select('*');
-      if (user && user.role !== 'ADMIN') {
-        fallbackQuery = fallbackQuery.eq('user_id', user.id);
+    // Fetch task_tags and tags in parallel using simple, fast queries
+    const [taskTagsResult, tagsResult] = await Promise.all([
+      supabase.from('task_tags').select('*'),
+      supabase.from('tags').select('*')
+    ]);
+
+    const taskTags = taskTagsResult.data || [];
+    const tags = tagsResult.data || [];
+
+    // Map tag ID to tag name
+    const tagMap = new Map<string, string>();
+    tags.forEach(t => tagMap.set(t.id, t.name));
+
+    // Group tag names by task ID
+    const taskTagsMap = new Map<string, string[]>();
+    taskTags.forEach(tt => {
+      const tagName = tagMap.get(tt.tag_id);
+      if (tagName) {
+        const list = taskTagsMap.get(tt.task_id) || [];
+        list.push(tagName);
+        taskTagsMap.set(tt.task_id, list);
       }
-      const { data: fallbackData, error: fallbackError } = await fallbackQuery;
-      if (fallbackError) throw fallbackError;
-      data = fallbackData;
-    }
-
-    return (data || []).map(t => {
-      const tags = t.task_tags
-        ? (t.task_tags as any[]).map((tt: any) => tt.tags?.name).filter(Boolean)
-        : [];
-
-      return {
-        id: t.id,
-        userId: t.user_id,
-        title: t.title,
-        category: t.category,
-        status: t.status as TaskStatus,
-        targetDate: t.target_date,
-        createdAt: t.created_at_ms ? Number(t.created_at_ms) : new Date(t.created_at).getTime(),
-        tags
-      };
     });
+
+    return (tasksData || []).map(t => ({
+      id: t.id,
+      userId: t.user_id,
+      title: t.title,
+      category: t.category,
+      status: t.status as TaskStatus,
+      targetDate: t.target_date,
+      createdAt: t.created_at_ms ? Number(t.created_at_ms) : new Date(t.created_at).getTime(),
+      tags: taskTagsMap.get(t.id) || []
+    }));
   } catch (error) {
     console.error('Error fetching tasks from Supabase:', error);
     return [];
