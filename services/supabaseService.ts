@@ -448,11 +448,18 @@ export const deleteTask = async (id: string) => {
   }
 };
 
-export const getUpdates = async (): Promise<TaskUpdate[]> => {
+export const getUpdates = async (taskIds?: string[]): Promise<TaskUpdate[]> => {
   try {
-    const { data, error } = await supabase
-      .from('task_updates')
-      .select('*');
+    if (taskIds && taskIds.length === 0) {
+      return [];
+    }
+
+    let query = supabase.from('task_updates').select('*');
+    if (taskIds) {
+      query = query.in('task_id', taskIds);
+    }
+
+    const { data, error } = await query;
 
     if (error) throw error;
 
@@ -548,15 +555,23 @@ export const subscribeToUpdates = (callback: (updates: TaskUpdate[]) => void, us
   const channel = supabase
     .channel('realtime:task_updates')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'task_updates' }, async () => {
-      const updates = await getUpdates();
-      // Apply equivalent memory filtering if needed
+      const tasks = await getTasks(user);
+      const taskIds = tasks.map(t => t.id);
+      const updates = taskIds.length > 0 ? await getUpdates(taskIds) : [];
       callback(updates);
     })
     .subscribe();
 
   // Load initial data
   if (!skipInitialLoad) {
-    getUpdates().then(callback);
+    getTasks(user).then(tasks => {
+      const taskIds = tasks.map(t => t.id);
+      if (taskIds.length > 0) {
+        getUpdates(taskIds).then(callback);
+      } else {
+        callback([]);
+      }
+    });
   }
 
   return () => {

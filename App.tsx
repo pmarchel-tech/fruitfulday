@@ -1417,15 +1417,14 @@ const App: React.FC = () => {
         const userId = currentUser.id;
         const isAdmin = currentUser.role === 'ADMIN';
 
+        // Wave 1: Fetch tasks, users, tags, and tokens in parallel
         const [
           fetchedTasks,
-          fetchedUpdates,
           fetchedUsers,
           { data: fetchedTags },
           fetchedAiTokensData
         ] = await Promise.all([
           getTasks(currentUser),
-          getUpdates(),
           getUsers(),
           supabase.from('tags').select('*'),
           (async () => {
@@ -1445,6 +1444,10 @@ const App: React.FC = () => {
             }));
           })()
         ]);
+
+        // Wave 2: Fetch updates using the loaded task IDs to avoid full table scans
+        const taskIds = fetchedTasks.map(t => t.id);
+        const fetchedUpdates = taskIds.length > 0 ? await getUpdates(taskIds) : [];
 
         if (isMounted) {
           setTasks(fetchedTasks);

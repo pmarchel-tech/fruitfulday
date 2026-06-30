@@ -200,13 +200,14 @@ USING (
 );
 
 -- 6. Task Updates Policies
-CREATE POLICY "Allow users to read updates they own or are team members, and admins to read all"
+CREATE POLICY "Allow users to read updates of tasks they have access to"
 ON public.task_updates FOR SELECT
 TO authenticated
 USING (
-    user_id = auth.uid()::text 
-    OR public.is_team_member(user_id)
-    OR public.is_admin()
+    EXISTS (
+        SELECT 1 FROM public.tasks
+        WHERE tasks.id = task_id
+    )
 );
 
 CREATE POLICY "Allow users and admins to create updates"
