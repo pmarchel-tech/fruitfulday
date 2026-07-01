@@ -653,6 +653,7 @@ const App: React.FC = () => {
   // Tags Master & Input State
   const [tagMaster, setTagMaster] = useState<Tag[]>([]);
   const [newTagInput, setNewTagInput] = useState('');
+  const [newTodoText, setNewTodoText] = useState('');
 
   // Language & Theme State
   const [currentLanguage, setCurrentLanguage] = useState<'EN' | 'ID'>(() => {
@@ -2347,6 +2348,7 @@ const App: React.FC = () => {
       targetDate: selectedTask.targetDate || getLocalDate(),
       createdAt: selectedTask.createdAt || Date.now(),
       tags: selectedTask.tags || [],
+      todos: selectedTask.todos || [],
       [field]: value
     };
     setTasks(prev => prev.map(t => t.id === selectedTask.id ? updatedTask : t));
@@ -2367,6 +2369,13 @@ const App: React.FC = () => {
   const handleToggleTaskStatus = async (task: Task, e?: React.MouseEvent | React.TouchEvent) => {
     if (e) e.stopPropagation();
     const newStatus = task.status === TaskStatus.DONE ? TaskStatus.PROGRESS : TaskStatus.DONE;
+    
+    // If toggling to DONE, prompt the user for confirmation
+    if (newStatus === TaskStatus.DONE) {
+      const isConfirmed = window.confirm("Apakah Anda yakin ingin menyelesaikan tugas ini? / Are you sure you want to mark this task as DONE?");
+      if (!isConfirmed) return;
+    }
+
     const updatedTask: Task = {
       id: task.id,
       userId: task.userId || currentUser?.id || '',
@@ -2375,14 +2384,97 @@ const App: React.FC = () => {
       status: newStatus,
       targetDate: task.targetDate || getLocalDate(),
       createdAt: task.createdAt || Date.now(),
-      tags: task.tags || []
+      tags: task.tags || [],
+      todos: task.todos || []
     };
     setTasks(prev => prev.map(t => t.id === task.id ? updatedTask : t));
     try {
       await saveSingleTask(updatedTask);
+
+      // If marked as DONE, automatically append to task history updates
+      if (newStatus === TaskStatus.DONE && currentUser) {
+        const newUpdate: TaskUpdate = { 
+          id: Date.now().toString(), 
+          taskId: task.id, 
+          userId: currentUser.id,
+          date: getLocalDate(), 
+          content: "Task marked as completed / Status changed to DONE", 
+          timestamp: Date.now(), 
+          isArchived: false,
+          statusChange: { from: task.status, to: TaskStatus.DONE }
+        };
+        setUpdates(prev => [newUpdate, ...prev]);
+        await saveSingleUpdate(newUpdate);
+      }
     } catch (err: any) {
       console.error("Failed to toggle task status:", err);
       alert("Failed to update status on server: " + (err.message || err));
+    }
+  };
+
+  const handleAddTodo = async () => {
+    if (!newTodoText.trim() || !selectedTask) return;
+    const cleanText = newTodoText.trim();
+    setNewTodoText('');
+
+    const newTodoItem = {
+      id: Date.now().toString(),
+      text: cleanText,
+      completed: false
+    };
+
+    const currentTodos = selectedTask.todos || [];
+    const updatedTask = {
+      ...selectedTask,
+      todos: [...currentTodos, newTodoItem]
+    };
+
+    setTasks(prev => prev.map(t => t.id === selectedTask.id ? updatedTask : t));
+    
+    try {
+      await saveSingleTask(updatedTask);
+    } catch (err: any) {
+      console.error("Failed to add todo:", err);
+    }
+  };
+
+  const handleToggleTodo = async (todoId: string) => {
+    if (!selectedTask) return;
+    const currentTodos = selectedTask.todos || [];
+    const updatedTodos = currentTodos.map(todo => 
+      todo.id === todoId ? { ...todo, completed: !todo.completed } : todo
+    );
+
+    const updatedTask = {
+      ...selectedTask,
+      todos: updatedTodos
+    };
+
+    setTasks(prev => prev.map(t => t.id === selectedTask.id ? updatedTask : t));
+
+    try {
+      await saveSingleTask(updatedTask);
+    } catch (err: any) {
+      console.error("Failed to toggle todo:", err);
+    }
+  };
+
+  const handleDeleteTodo = async (todoId: string) => {
+    if (!selectedTask) return;
+    const currentTodos = selectedTask.todos || [];
+    const updatedTodos = currentTodos.filter(todo => todo.id !== todoId);
+
+    const updatedTask = {
+      ...selectedTask,
+      todos: updatedTodos
+    };
+
+    setTasks(prev => prev.map(t => t.id === selectedTask.id ? updatedTask : t));
+
+    try {
+      await saveSingleTask(updatedTask);
+    } catch (err: any) {
+      console.error("Failed to delete todo:", err);
     }
   };
   const handleAddToCalendar = (update: TaskUpdate) => {
@@ -4586,6 +4678,70 @@ const App: React.FC = () => {
                       onChange={e => setUpdateContent(e.target.value)}
                     />
 
+                    {/* To Do List Section */}
+                    <div className="flex flex-col gap-2 mt-2 bg-stone-50 border border-stone-200 rounded-2xl p-3 shadow-inner">
+                      <div className="flex items-center justify-between px-1">
+                        <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">To Do List</span>
+                        <span className="bg-stone-200 text-stone-600 text-[10px] px-2 py-0.5 rounded-full font-bold">
+                          {(selectedTask.todos || []).filter(t => t.completed).length}/{(selectedTask.todos || []).length}
+                        </span>
+                      </div>
+
+                      {/* Input for adding new Todo */}
+                      <div className="flex gap-1.5 pl-1 pr-1">
+                        <input 
+                          type="text"
+                          placeholder={currentLanguage === 'ID' ? 'Tambah tugas baru...' : 'Add new to-do...'}
+                          value={newTodoText}
+                          onChange={(e) => setNewTodoText(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleAddTodo();
+                            }
+                          }}
+                          className="flex-1 text-sm font-semibold text-slate-700 bg-white border border-stone-200 rounded-lg px-2.5 py-1.5 focus:border-[#0038FF] focus:outline-none transition-all placeholder:text-stone-300"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleAddTodo}
+                          disabled={!newTodoText.trim()}
+                          className="px-3 bg-[#0038FF] hover:bg-blue-700 disabled:bg-stone-200 text-white rounded-lg transition-all shadow-sm active:scale-95 flex items-center justify-center shrink-0"
+                        >
+                          <Plus size={14} className="stroke-[3]" />
+                        </button>
+                      </div>
+
+                      {/* List of Todos */}
+                      {selectedTask.todos && selectedTask.todos.length > 0 && (
+                        <div className="flex flex-col gap-1 mt-1.5 max-h-36 overflow-y-auto pr-1 px-1">
+                          {selectedTask.todos.map(todo => (
+                            <div key={todo.id} className="flex items-center justify-between gap-2 py-1 group/todo border-b border-stone-100 last:border-b-0">
+                              <label className="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
+                                <input 
+                                  type="checkbox"
+                                  checked={todo.completed}
+                                  onChange={() => handleToggleTodo(todo.id)}
+                                  className="w-4 h-4 rounded text-[#0038FF] focus:ring-[#0038FF] border-stone-300 accent-[#0038FF] shrink-0"
+                                />
+                                <span className={`text-sm font-medium text-slate-700 truncate ${todo.completed ? 'line-through text-stone-400 font-normal' : ''}`}>
+                                  {todo.text}
+                                </span>
+                              </label>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteTodo(todo.id)}
+                                className="opacity-0 group-hover/todo:opacity-100 p-0.5 text-stone-400 hover:text-red-500 rounded-md transition-all hover:bg-stone-100 shrink-0"
+                                title="Delete To-do"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
                     {/* Hashtag Field - placed below the textarea */}
                     <div className="flex flex-col gap-1.5 mt-2 bg-stone-100/50 border border-stone-200 rounded-2xl p-2.5">
                       {/* Existing tags of the selected tasks */}
@@ -4670,7 +4826,7 @@ const App: React.FC = () => {
                           }}
                           className="px-3 bg-[#0038FF] hover:bg-blue-700 disabled:bg-stone-200 text-white text-sm font-bold rounded-lg transition-all shadow-sm active:scale-95 flex items-center justify-center shrink-0"
                         >
-                          <Plus size={14} className="stroke-[3]" />
+                          <ChevronRight size={14} className="stroke-[3]" />
                         </button>
                       </div>
                     </div>

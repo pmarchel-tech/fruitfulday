@@ -169,6 +169,13 @@ const SwipeableTaskCard: React.FC<SwipeableTaskCardProps> = ({
             isCompleted ? 'text-[#8E9BB2] line-through font-semibold' : 'text-[#1C2038]'
           }`}>
             {task.title}
+            {task.todos && task.todos.length > 0 && (
+              <span className={`ml-1.5 text-sm ${
+                isCompleted ? 'text-[#8E9BB2]/70 font-semibold line-through' : 'text-[#0038FF] font-extrabold'
+              }`}>
+                ({task.todos.filter(t => t.completed).length}/{task.todos.length})
+              </span>
+            )}
           </h3>
           
           <div className="flex flex-wrap items-center gap-1.5 mt-2">

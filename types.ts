@@ -19,6 +19,12 @@ export interface User {
   teamMemberIds: string[]; // IDs of users this admin manages
 }
 
+export interface TodoItem {
+  id: string;
+  text: string;
+  completed: boolean;
+}
+
 export interface Task {
   id: string;
   userId: string; // Owner of the task
@@ -28,6 +34,7 @@ export interface Task {
   targetDate: string; // ISO Date string YYYY-MM-DD
   createdAt: number;
   tags?: string[];
+  todos?: TodoItem[];
 }
 
 export interface Tag {

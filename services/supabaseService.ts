@@ -335,7 +335,8 @@ export const getTasks = async (user?: User): Promise<Task[]> => {
       status: t.status as TaskStatus,
       targetDate: t.target_date,
       createdAt: t.created_at_ms ? Number(t.created_at_ms) : new Date(t.created_at).getTime(),
-      tags: taskTagsMap.get(t.id) || []
+      tags: taskTagsMap.get(t.id) || [],
+      todos: t.todos || []
     }));
   } catch (error) {
     console.error('Error fetching tasks from Supabase:', error);
@@ -362,7 +363,8 @@ export const saveSingleTask = async (task: Task) => {
       category: task.category,
       status: task.status,
       target_date: task.targetDate,
-      created_at_ms: task.createdAt
+      created_at_ms: task.createdAt,
+      todos: task.todos || []
     };
 
     const { error: taskErr } = await supabase
