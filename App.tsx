@@ -760,6 +760,7 @@ const App: React.FC = () => {
   const tasksFileInputRef = useRef<HTMLInputElement>(null);
   const updatesFileInputRef = useRef<HTMLInputElement>(null);
   const saveTimeoutRef = useRef<any>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const handleImportClick = async () => {
     setImportError(null);
@@ -1406,6 +1407,18 @@ const App: React.FC = () => {
       backfillTaskUpdates(currentUser.id, tasks);
     }
   }, [currentUser, tasks]);
+
+  // Auto-focus search input when search sub-tab is activated
+  useEffect(() => {
+    if (activeTab === 'overview' && overviewSubTab === 'search') {
+      const timer = setTimeout(() => {
+        if (searchInputRef.current) {
+          searchInputRef.current.focus();
+        }
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [activeTab, overviewSubTab]);
 
   useEffect(() => {
     if (!currentUser) return;
@@ -2934,6 +2947,7 @@ const App: React.FC = () => {
                 <div className="relative">
                   <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                   <input 
+                    ref={searchInputRef}
                     type="text" 
                     placeholder="Search tasks" 
                     value={searchQuery} 
@@ -4542,7 +4556,17 @@ const App: React.FC = () => {
                 </main>
               </div>
               
-              {/* Dynamic FAB Floating Action Button for Dashboard */}
+              {/* Dynamic FAB Floating Action Buttons for Dashboard */}
+              <button 
+                onClick={() => {
+                  setActiveTab('overview');
+                  setOverviewSubTab('search');
+                }}
+                className="absolute bottom-44 md:bottom-22 right-6 w-14 h-14 bg-[#0038FF] hover:bg-blue-700 text-white rounded-full flex items-center justify-center shadow-xl shadow-blue-600/30 active:scale-95 hover:scale-105 transition-all z-40"
+                title={currentLanguage === 'ID' ? 'Cari Tugas' : 'Search Tasks'}
+              >
+                <Search size={28} />
+              </button>
               <button 
                 onClick={createNewTask}
                 className="absolute bottom-28 md:bottom-6 right-6 w-14 h-14 bg-[#0038FF] hover:bg-blue-700 text-white rounded-full flex items-center justify-center shadow-xl shadow-blue-600/30 active:scale-95 hover:scale-105 transition-all z-40"
