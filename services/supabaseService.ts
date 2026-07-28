@@ -303,9 +303,13 @@ export const getTasks = async (user?: User): Promise<Task[]> => {
     const { data: tasksData, error: tasksErr } = await queryBuilder;
     if (tasksErr) throw tasksErr;
 
-    // Fetch task_tags and tags in parallel using simple, fast queries
+    const loadedTaskIds = (tasksData || []).map(t => t.id);
+
+    // Fetch only the relevant task_tags and all tags in parallel
     const [taskTagsResult, tagsResult] = await Promise.all([
-      supabase.from('task_tags').select('*'),
+      loadedTaskIds.length > 0 
+        ? supabase.from('task_tags').select('*').in('task_id', loadedTaskIds)
+        : Promise.resolve({ data: [] }),
       supabase.from('tags').select('*')
     ]);
 

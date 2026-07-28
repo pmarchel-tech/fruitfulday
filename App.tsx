@@ -280,6 +280,7 @@ const App: React.FC = () => {
     return `${year}-${month}-${day}`;
   });
   const [isLoadingData, setIsLoadingData] = useState(false);
+  const [isColdStart, setIsColdStart] = useState(false);
   
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'dashboard' | 'detail' | 'profile' | 'updates' | 'ai'>('dashboard');
@@ -1425,46 +1426,72 @@ const App: React.FC = () => {
 
     let isMounted = true;
     setIsLoadingData(true);
+    setIsColdStart(false);
+
+    // Set a timer to show cold start message if loading takes longer than 3 seconds
+    const coldStartTimer = setTimeout(() => {
+      if (isMounted) setIsColdStart(true);
+    }, 3000);
 
     const loadAllInitialData = async () => {
       try {
         const userId = currentUser.id;
         const isAdmin = currentUser.role === 'ADMIN';
 
-        // Wrap the fetching process in a 15-second timeout to prevent permanent loading screens
+        // Wrap the fetching process in a 45-second timeout to prevent permanent loading screens during cold starts
         await Promise.race([
           (async () => {
-            // Wave 1: Fetch tasks, users, tags, and tokens in parallel
+            // Wave 1: Fetch tasks, users, tags, and tokens in parallel with individual error catch handlers
             const [
               fetchedTasks,
               fetchedUsers,
-              { data: fetchedTags },
+              fetchedTagsResult,
               fetchedAiTokensData
             ] = await Promise.all([
-              getTasks(currentUser),
-              getUsers(),
-              supabase.from('tags').select('*'),
+              getTasks(currentUser).catch(err => {
+                console.error("Error loading tasks:", err);
+                return [];
+              }),
+              getUsers().catch(err => {
+                console.error("Error loading users:", err);
+                return [];
+              }),
+              supabase.from('tags').select('*').catch(err => {
+                console.error("Error loading tags:", err);
+                return { data: [] };
+              }),
               (async () => {
-                let q = supabase.from('ai_token_records').select('*');
-                if (!isAdmin) {
-                  q = q.eq('user_id', userId);
+                try {
+                  let q = supabase.from('ai_token_records').select('*');
+                  if (!isAdmin) {
+                    q = q.eq('user_id', userId);
+                  }
+                  const { data, error } = await q.order('timestamp_ms', { ascending: false });
+                  if (error) throw error;
+                  return (data || []).map(r => ({
+                    id: r.id,
+                    userId: r.user_id,
+                    date: r.date,
+                    timestamp: r.timestamp_ms ? Number(r.timestamp_ms) : new Date(r.timestamp).getTime(),
+                    usedFor: r.used_for,
+                    inputTokens: r.input_tokens,
+                    outputTokens: r.output_tokens
+                  }));
+                } catch (err) {
+                  console.error("Error loading AI tokens:", err);
+                  return [];
                 }
-                const { data } = await q.order('timestamp_ms', { ascending: false });
-                return (data || []).map(r => ({
-                  id: r.id,
-                  userId: r.user_id,
-                  date: r.date,
-                  timestamp: r.timestamp_ms ? Number(r.timestamp_ms) : new Date(r.timestamp).getTime(),
-                  usedFor: r.used_for,
-                  inputTokens: r.input_tokens,
-                  outputTokens: r.output_tokens
-                }));
               })()
             ]);
 
+            const fetchedTags = fetchedTagsResult?.data || [];
+
             // Wave 2: Fetch updates using the loaded task IDs to avoid full table scans
             const taskIds = fetchedTasks.map(t => t.id);
-            const fetchedUpdates = taskIds.length > 0 ? await getUpdates(taskIds) : [];
+            const fetchedUpdates = taskIds.length > 0 ? await getUpdates(taskIds).catch(err => {
+              console.error("Error loading updates:", err);
+              return [];
+            }) : [];
 
             if (isMounted) {
               setTasks(fetchedTasks);
@@ -1475,16 +1502,20 @@ const App: React.FC = () => {
             }
           })(),
           new Promise((_, reject) => 
-            setTimeout(() => reject(new Error("Database query timed out")), 15000)
+            setTimeout(() => reject(new Error("Database query timed out")), 45000)
           )
         ]);
 
         if (isMounted) {
+          clearTimeout(coldStartTimer);
+          setIsColdStart(false);
           setIsLoadingData(false);
         }
       } catch (error) {
         console.error("Error loading initial database data:", error);
         if (isMounted) {
+          clearTimeout(coldStartTimer);
+          setIsColdStart(false);
           setIsLoadingData(false);
         }
       }
@@ -1500,6 +1531,7 @@ const App: React.FC = () => {
 
     return () => {
       isMounted = false;
+      clearTimeout(coldStartTimer);
       unsubTasks();
       unsubUpdates();
       unsubUsers();
@@ -2614,7 +2646,25 @@ const App: React.FC = () => {
 
   return (
     <div className="flex flex-col h-[100dvh] bg-beige overflow-hidden relative font-sans">
-      {isLoadingData && <div className="absolute inset-0 z-[60] bg-white/50 backdrop-blur-sm flex items-center justify-center"><div className="bg-white p-4 rounded-xl shadow-xl flex items-center gap-3"><Loader2 className="animate-spin text-primary" size={24} /><span className="font-bold text-secondary">Loading Data...</span></div></div>}
+      {isLoadingData && (
+        <div className="absolute inset-0 z-[60] bg-white/50 backdrop-blur-sm flex items-center justify-center">
+          <div className="bg-white p-5 rounded-2xl shadow-xl flex flex-col items-center gap-3 max-w-[280px]">
+            <div className="flex items-center gap-3">
+              <Loader2 className="animate-spin text-primary" size={24} />
+              <span className="font-bold text-secondary">
+                {currentLanguage === 'ID' ? 'Memuat Data...' : 'Loading Data...'}
+              </span>
+            </div>
+            {isColdStart && (
+              <p className="text-[10px] text-stone-500 font-semibold text-center mt-1 animate-pulse">
+                {currentLanguage === 'ID' 
+                  ? 'Menghubungkan ke database (membangunkan server)...' 
+                  : 'Connecting to database (waking up server)...'}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
       {showAdminConfirmModal && (
         <div className="absolute inset-0 z-[80] bg-secondary/60 backdrop-blur-sm flex items-center justify-center p-6">
            <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl animate-in zoom-in-95 duration-200">
