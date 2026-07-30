@@ -131,22 +131,65 @@ export const loginUser = async (usernameOrEmail: string, pin: string): Promise<U
       const pin = data.user.user_metadata?.pin || '1234';
       const role = data.user.user_metadata?.role || 'MEMBER';
 
-      const { data: newProfile, error: insertErr } = await supabase
+      // Self-healing: Check if a profile with the same username exists but with a different ID
+      const { data: existingProfile } = await supabase
         .from('profiles')
-        .insert({
-          id: data.user.id,
-          username,
-          pin,
-          role
-        })
-        .select()
-        .single();
+        .select('*')
+        .eq('username', username)
+        .neq('id', data.user.id)
+        .maybeSingle();
 
-      if (insertErr) {
-        console.error("Error creating missing profile on-the-fly:", insertErr.message);
-        throw new Error("Gagal membuat profil pengguna: " + insertErr.message);
+      if (existingProfile) {
+        console.log(`Self-healing: Found imported profile for ${username} with ID ${existingProfile.id}. Migrating to new Auth ID ${data.user.id}`);
+        // 1. Insert new profile
+        const { data: newProfile, error: insertErr } = await supabase
+          .from('profiles')
+          .insert({
+            id: data.user.id,
+            username: existingProfile.username,
+            pin: existingProfile.pin,
+            role: existingProfile.role
+          })
+          .select()
+          .single();
+
+        if (insertErr) {
+          console.error("Failed to insert self-healed profile:", insertErr.message);
+          throw new Error("Gagal memigrasi profil: " + insertErr.message);
+        }
+
+        // 2. Update foreign references
+        await Promise.all([
+          supabase.from('tasks').update({ user_id: data.user.id }).eq('user_id', existingProfile.id),
+          supabase.from('task_updates').update({ user_id: data.user.id }).eq('user_id', existingProfile.id),
+          supabase.from('team_members').update({ admin_id: data.user.id }).eq('admin_id', existingProfile.id),
+          supabase.from('team_members').update({ member_id: data.user.id }).eq('member_id', existingProfile.id),
+          supabase.from('ai_token_records').update({ user_id: data.user.id }).eq('user_id', existingProfile.id)
+        ]);
+
+        // 3. Delete old profile
+        await supabase.from('profiles').delete().eq('id', existingProfile.id);
+
+        profile = newProfile;
+      } else {
+        // Create brand new profile
+        const { data: newProfile, error: insertErr } = await supabase
+          .from('profiles')
+          .insert({
+            id: data.user.id,
+            username,
+            pin,
+            role
+          })
+          .select()
+          .single();
+
+        if (insertErr) {
+          console.error("Error creating missing profile on-the-fly:", insertErr.message);
+          throw new Error("Gagal membuat profil pengguna: " + insertErr.message);
+        }
+        profile = newProfile;
       }
-      profile = newProfile;
     }
 
     // Fetch team members
@@ -197,22 +240,64 @@ export const getCurrentUser = async (): Promise<User | null> => {
       const pin = session.user.user_metadata?.pin || '1234';
       const role = session.user.user_metadata?.role || 'MEMBER';
 
-      const { data: newProfile, error: insertErr } = await supabase
+      // Self-healing: Check if a profile with the same username exists but with a different ID
+      const { data: existingProfile } = await supabase
         .from('profiles')
-        .insert({
-          id,
-          username,
-          pin,
-          role
-        })
-        .select()
-        .single();
+        .select('*')
+        .eq('username', username)
+        .neq('id', id)
+        .maybeSingle();
 
-      if (insertErr) {
-        console.error("Error creating profile on-the-fly in getCurrentUser:", insertErr.message);
-        return null;
+      if (existingProfile) {
+        console.log(`Self-healing in getCurrentUser: Found imported profile for ${username} with ID ${existingProfile.id}. Migrating to new Auth ID ${id}`);
+        // 1. Insert new profile
+        const { data: newProfile, error: insertErr } = await supabase
+          .from('profiles')
+          .insert({
+            id,
+            username: existingProfile.username,
+            pin: existingProfile.pin,
+            role: existingProfile.role
+          })
+          .select()
+          .single();
+
+        if (insertErr) {
+          console.error("Failed to insert self-healed profile in getCurrentUser:", insertErr.message);
+          return null;
+        }
+
+        // 2. Update foreign references
+        await Promise.all([
+          supabase.from('tasks').update({ user_id: id }).eq('user_id', existingProfile.id),
+          supabase.from('task_updates').update({ user_id: id }).eq('user_id', existingProfile.id),
+          supabase.from('team_members').update({ admin_id: id }).eq('admin_id', existingProfile.id),
+          supabase.from('team_members').update({ member_id: id }).eq('member_id', existingProfile.id),
+          supabase.from('ai_token_records').update({ user_id: id }).eq('user_id', existingProfile.id)
+        ]);
+
+        // 3. Delete old profile
+        await supabase.from('profiles').delete().eq('id', existingProfile.id);
+
+        profile = newProfile;
+      } else {
+        const { data: newProfile, error: insertErr } = await supabase
+          .from('profiles')
+          .insert({
+            id,
+            username,
+            pin,
+            role
+          })
+          .select()
+          .single();
+
+        if (insertErr) {
+          console.error("Error creating profile on-the-fly in getCurrentUser:", insertErr.message);
+          return null;
+        }
+        profile = newProfile;
       }
-      profile = newProfile;
     }
 
     if (!profile) return null;

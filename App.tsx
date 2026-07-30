@@ -281,6 +281,8 @@ const App: React.FC = () => {
   });
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [isColdStart, setIsColdStart] = useState(false);
+  const [dataLoadError, setDataLoadError] = useState<string | null>(null);
+  const [reloadTrigger, setReloadTrigger] = useState(0);
   
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'dashboard' | 'detail' | 'profile' | 'updates' | 'ai'>('dashboard');
@@ -1456,9 +1458,9 @@ const App: React.FC = () => {
                 console.error("Error loading users:", err);
                 return [];
               }),
-              supabase.from('tags').select('*').catch(err => {
+              Promise.resolve(supabase.from('tags').select('*')).catch(err => {
                 console.error("Error loading tags:", err);
-                return { data: [] };
+                return { data: [] } as any;
               }),
               (async () => {
                 try {
@@ -1511,9 +1513,10 @@ const App: React.FC = () => {
           setIsColdStart(false);
           setIsLoadingData(false);
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error("Error loading initial database data:", error);
         if (isMounted) {
+          setDataLoadError(error?.message || String(error));
           clearTimeout(coldStartTimer);
           setIsColdStart(false);
           setIsLoadingData(false);
@@ -1538,7 +1541,7 @@ const App: React.FC = () => {
       unsubTags();
       unsubAiTokens();
     };
-  }, [currentUser]);
+  }, [currentUser, reloadTrigger]);
 
   // Automatic Google Sheets Export Scheduler Effect
   useEffect(() => {
@@ -2656,11 +2659,24 @@ const App: React.FC = () => {
               </span>
             </div>
             {isColdStart && (
-              <p className="text-[10px] text-stone-500 font-semibold text-center mt-1 animate-pulse">
-                {currentLanguage === 'ID' 
-                  ? 'Menghubungkan ke database (membangunkan server)...' 
-                  : 'Connecting to database (waking up server)...'}
-              </p>
+              <>
+                <p className="text-[10px] text-stone-500 font-semibold text-center mt-1 animate-pulse">
+                  {currentLanguage === 'ID' 
+                    ? 'Menghubungkan ke database (membangunkan server)...' 
+                    : 'Connecting to database (waking up server)...'}
+                </p>
+                <button 
+                  type="button"
+                  onClick={() => {
+                    localStorage.clear();
+                    sessionStorage.clear();
+                    window.location.reload();
+                  }}
+                  className="mt-1 text-[10px] font-bold text-rose-500 hover:text-rose-600 underline uppercase tracking-wider cursor-pointer z-50 relative"
+                >
+                  {currentLanguage === 'ID' ? 'Paksa Keluar & Muat Ulang' : 'Force Logout & Reload'}
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -4272,6 +4288,19 @@ const App: React.FC = () => {
                 </header>
                 {/* END: MainHeader */}
 
+                {dataLoadError && (
+                  <div className="mx-4 mt-3 p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold rounded-xl flex items-start gap-2.5 shadow-sm shrink-0">
+                    <AlertCircle size={16} className="shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="font-bold">{currentLanguage === 'ID' ? 'Gagal memuat database:' : 'Database connection error:'}</p>
+                      <p className="opacity-90 mt-0.5 font-mono text-[10px] break-all">{dataLoadError}</p>
+                      <button onClick={() => setReloadTrigger(prev => prev + 1)} className="mt-2 text-[10.5px] font-black underline uppercase text-rose-800 hover:text-rose-900 tracking-wider">
+                        {currentLanguage === 'ID' ? 'Coba Lagi' : 'Retry Connection'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <main className="p-4 space-y-6 flex-1 min-h-0">
                   {/* BEGIN: KPI Section */}
                   <section className="grid grid-cols-2 gap-4" data-purpose="kpi-metrics">
@@ -4603,8 +4632,14 @@ const App: React.FC = () => {
                     )}
                   </section>
                   {/* END: Task List Container */}
-                </main>
-              </div>
+                 </main>
+                 {/* Debug Info */}
+                 <div className="px-5 py-4 text-center mt-auto shrink-0">
+                   <p className="text-[9.5px] font-mono text-slate-400 opacity-70">
+                     Debug: URL={import.meta.env.VITE_SUPABASE_URL} | Tasks={tasks.length} | ID={currentUser?.id} | Role={currentUser?.role}
+                   </p>
+                 </div>
+               </div>
               
               {/* Dynamic FAB Floating Action Buttons for Dashboard */}
               <button 
